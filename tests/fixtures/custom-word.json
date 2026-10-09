@@ -1,0 +1,18 @@
+[
+  {
+    "id": "tanzen",
+    "word": "tanzen",
+    "meaning": "跳舞",
+    "partOfSpeech": "verb",
+    "conjugation": "ich tanze · du tanzt · er/sie tanzt",
+    "example": "Wir tanzen zusammen.",
+    "exampleZh": "我们一起跳舞。",
+    "theme": "活动",
+    "cefr": "A1",
+    "difficulty": 1,
+    "descriptions": {
+      "zh": ["跟随音乐有节奏地移动身体。", "舞会中人们常做的动作。"],
+      "de": ["Man bewegt den Körper im Rhythmus der Musik.", "Das macht man oft auf einer Party zur Musik."]
+    }
+  }
+]
