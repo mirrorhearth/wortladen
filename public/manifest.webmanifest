@@ -1,0 +1,12 @@
+{
+  "name": "Wortladen · 单词小店",
+  "short_name": "Wortladen",
+  "description": "德语 A1 卡牌交易与店铺经营学习游戏",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d3035",
+  "theme_color": "#0d3035",
+  "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
