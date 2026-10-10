@@ -1,0 +1,345 @@
+.current-mode {
+  display: inline-flex;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px solid #9c7847;
+  border-radius: 999px;
+  color: #704e28;
+  background: #f4dfae;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.learning-flip .word-card {
+  padding: 0;
+  background: #f5e8c8;
+}
+
+.word-card-inner {
+  position: absolute;
+  inset: 0;
+  display: block;
+  transform-style: preserve-3d;
+  transition: transform .48s cubic-bezier(.2, .72, .25, 1);
+}
+
+.word-card.is-flipped .word-card-inner {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 25px 8px 13px;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #fff9e9, #ead8af);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-back {
+  color: #fdf4dc;
+  background: linear-gradient(145deg, #265f61, #12383d);
+  transform: rotateY(180deg);
+}
+
+.card-back .card-ribbon {
+  background: #9a5c3d;
+}
+
+.card-back .card-meaning {
+  max-width: 100%;
+  color: #fff4d8;
+  font-family: Georgia, "Microsoft YaHei", serif;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.word-card .card-face > small {
+  color: #756b58;
+  font-size: .62rem;
+}
+
+.word-card .card-back > small {
+  color: #d8c9a7;
+}
+
+.word-card .mastery-pips {
+  z-index: 5;
+}
+
+.hand-area.quiz-hand {
+  min-height: 210px;
+  padding-top: 12px;
+}
+
+.quiz-panel {
+  width: min(860px, 100%);
+  min-height: 178px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(150px, .65fr) minmax(360px, 1.55fr);
+  gap: 18px;
+  align-items: center;
+  padding: 14px 18px;
+  border: 1px solid #d8b66c66;
+  border-radius: 18px;
+  color: #fff4da;
+  background: linear-gradient(135deg, #12383d, #08262c);
+  box-shadow: inset 0 1px #fff2cd1f, 0 14px 30px #0004;
+}
+
+.quiz-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.quiz-heading > span {
+  color: #e4ac45;
+  font-size: .63rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.quiz-heading strong {
+  font: 800 1.15rem/1.25 Georgia, "Microsoft YaHei", serif;
+}
+
+.quiz-heading small {
+  color: #c6bda5;
+  font-size: .7rem;
+}
+
+.quiz-form {
+  display: grid;
+  gap: 7px;
+}
+
+.quiz-form > label {
+  color: #d9cdaF;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.quiz-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.quiz-input-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 10px 13px;
+  border: 2px solid #d6b366;
+  border-radius: 12px;
+  outline: 0;
+  color: #173337;
+  background: #fff8e8;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.quiz-input-row input:focus {
+  border-color: #ffe09a;
+  box-shadow: 0 0 0 3px #f5c96833;
+}
+
+.quiz-input-row button,
+.quiz-actions button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #d7b86e;
+  border-radius: 11px;
+  padding: 9px 12px;
+  color: #173337;
+  background: #fff3d6;
+  font-size: .76rem;
+  font-weight: 850;
+}
+
+.quiz-input-row .quiz-submit,
+.quiz-actions .quiz-deliver:not(:disabled) {
+  border-color: #f4c664;
+  color: #fff9e8;
+  background: linear-gradient(135deg, #2b6968, #17484d);
+}
+
+.quiz-input-row button:disabled,
+.quiz-actions button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.quiz-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.quiz-actions button {
+  flex: 1;
+}
+
+.quiz-feedback {
+  min-height: 18px;
+  margin: 0;
+  color: #b9c5ba;
+  font-size: .68rem;
+  line-height: 1.35;
+}
+
+.quiz-feedback.status-wrong {
+  color: #ffb5a8;
+}
+
+.quiz-feedback.status-correct {
+  color: #aee4ad;
+  font-weight: 800;
+}
+
+.quiz-feedback.status-revealed {
+  color: #ffe096;
+  font-weight: 800;
+}
+
+.learning-mode-setting {
+  grid-column: 1 / -1;
+  align-items: stretch !important;
+  flex-direction: column;
+}
+
+.settings-grid .learning-mode-setting .mode-setting-copy {
+  justify-content: flex-start;
+}
+
+.settings-grid .learning-mode-setting .mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mode-options button {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid #b79a62;
+  border-radius: 14px;
+  color: #173337;
+  background: #fffdf5;
+  text-align: left;
+}
+
+.mode-options button.active {
+  border-color: #1c5559;
+  background: #e7f0e7;
+  box-shadow: inset 0 0 0 2px #1c555933;
+}
+
+.mode-options button strong {
+  font: 800 1rem Georgia, "Microsoft YaHei", serif;
+}
+
+.mode-options button span {
+  color: #2e595a;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.mode-options button small {
+  color: #786f60;
+  font-size: .72rem;
+}
+
+.reduce-motion .word-card-inner {
+  transition-duration: .01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-card-inner {
+    transition-duration: .01ms;
+  }
+}
+
+@media (max-width: 600px) {
+  .learning-quiz {
+    grid-template-rows: minmax(390px, 54svh) minmax(218px, auto) !important;
+  }
+
+  .learning-flip .word-card {
+    padding: 0;
+  }
+
+  .card-face {
+    gap: 2px;
+    padding: 23px 2px 11px;
+  }
+
+  .word-card .card-face > small {
+    font-size: clamp(.43rem, 1.9vw, .55rem);
+    line-height: 1.15;
+  }
+
+  .word-card .card-back .card-meaning {
+    white-space: normal;
+    font-size: clamp(.58rem, 2.8vw, .78rem);
+  }
+
+  .hand-area.quiz-hand {
+    min-height: 218px;
+    padding: 7px 6px max(9px, env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  .quiz-panel {
+    min-height: 202px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 8px;
+    padding: 9px;
+    border-radius: 14px;
+  }
+
+  .quiz-heading strong {
+    font-size: .82rem;
+  }
+
+  .quiz-heading small {
+    font-size: .58rem;
+  }
+
+  .quiz-input-row {
+    gap: 5px;
+  }
+
+  .quiz-input-row input {
+    min-height: 43px;
+    padding: 8px 9px;
+  }
+
+  .quiz-input-row button,
+  .quiz-actions button {
+    min-height: 38px;
+    padding: 7px 8px;
+    font-size: .66rem;
+  }
+
+  .quiz-feedback {
+    font-size: .58rem;
+  }
+
+  .settings-grid .learning-mode-setting .mode-options {
+    grid-template-columns: 1fr;
+  }
+}
+

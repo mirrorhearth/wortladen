@@ -1,4 +1,5 @@
 export type PartOfSpeech = "noun" | "verb" | "adjective" | "adverb" | "other";
+export type LearningMode = "flip" | "quiz";
 
 export type WordEntry = {
   id: string;
@@ -62,3 +63,4 @@ export type Customer = {
   style: string;
   spriteIndex: number;
 };
+

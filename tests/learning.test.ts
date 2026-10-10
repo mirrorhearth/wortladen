@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { VOCABULARY } from "../data/vocabulary.ts";
-import { makeCandidates, scheduleReview, selectLearningWord } from "../lib/learning.ts";
+import { isGermanAnswerCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "../lib/learning.ts";
 import { DEFAULT_SAVE } from "../lib/storage.ts";
 
 test("the MVP ships exactly 50 checked starter words", () => {
@@ -45,3 +45,21 @@ test("a non-food imported word enters the generic order and card pipeline", () =
   assert.equal(selectLearningWord([custom], { ...DEFAULT_SAVE, customWords: [custom] }).id, "tanzen");
   assert.equal(makeCandidates(custom, [custom, ...VOCABULARY], 5).filter((word) => word.id === "tanzen").length, 1);
 });
+
+test("quiz answers ignore surrounding spaces and case but keep German letters strict", () => {
+  const punctual = VOCABULARY.find((word) => word.id === "puenktlich")!;
+  const street = VOCABULARY.find((word) => word.id === "strasse")!;
+  assert.equal(normalizeGermanAnswer("  PÜNKTLICH  "), "pünktlich");
+  assert.equal(isGermanAnswerCorrect(punctual, "  PÜNKTLICH  "), true);
+  assert.equal(isGermanAnswerCorrect(punctual, "puenktlich"), false);
+  assert.equal(isGermanAnswerCorrect(street, "Straße"), true);
+  assert.equal(isGermanAnswerCorrect(street, "Strasse"), false);
+});
+
+test("quiz accepts the target word and an explicit noun article without changing vocabulary", () => {
+  const book = VOCABULARY.find((word) => word.id === "buch")!;
+  assert.equal(isGermanAnswerCorrect(book, "Buch"), true);
+  assert.equal(isGermanAnswerCorrect(book, "das Buch"), true);
+  assert.equal(isGermanAnswerCorrect(book, "der Buch"), false);
+});
+

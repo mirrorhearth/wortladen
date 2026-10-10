@@ -1,9 +1,10 @@
-import type { SaveData } from "./game-types";
+import type { LearningMode, SaveData } from "./game-types";
 import { VOCABULARY } from "@/data/vocabulary";
 
 const DB_NAME = "wortladen-db";
 const STORE = "saves";
 const KEY = "main";
+const LEARNING_MODE_KEY = "wortladen-learning-mode";
 
 export const DEFAULT_SAVE: SaveData = {
   version: 1,
@@ -79,3 +80,21 @@ export async function readSaveFile(file: File): Promise<SaveData> {
   if (!validateSave(parsed)) throw new Error("存档格式无效或版本不受支持。");
   return parsed;
 }
+
+export function loadLearningMode(): LearningMode {
+  if (typeof localStorage === "undefined") return "flip";
+  try {
+    return localStorage.getItem(LEARNING_MODE_KEY) === "quiz" ? "quiz" : "flip";
+  } catch {
+    return "flip";
+  }
+}
+
+export function saveLearningMode(mode: LearningMode) {
+  try {
+    localStorage.setItem(LEARNING_MODE_KEY, mode);
+  } catch {
+    // Some private browsing modes can deny localStorage; the current session still works.
+  }
+}
+

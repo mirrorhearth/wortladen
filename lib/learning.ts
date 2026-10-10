@@ -83,3 +83,16 @@ export function chooseDescription(word: WordEntry, chineseRatio: number, mastery
   return { lang, text: choices[Math.floor(Math.random() * choices.length)] };
 }
 
+export function normalizeGermanAnswer(answer: string) {
+  return answer.trim().toLocaleLowerCase("de-DE");
+}
+
+export function isGermanAnswerCorrect(word: WordEntry, answer: string) {
+  const normalized = normalizeGermanAnswer(answer);
+  if (!normalized) return false;
+  const accepted = [word.word];
+  if (word.article) accepted.push(`${word.article} ${word.word}`);
+  return accepted.some((candidate) => normalizeGermanAnswer(candidate) === normalized);
+}
+
+

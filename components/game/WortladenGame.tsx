@@ -8,15 +8,18 @@ import {
   CircleHelp,
   Clock3,
   Coins,
+  Eye,
   Footprints,
   House,
   Import,
+  Keyboard,
   Landmark,
   MessageCircleMore,
   PackageOpen,
   Play,
   RotateCcw,
   Search,
+  Send,
   Settings,
   Shuffle,
   Sparkles,
@@ -31,12 +34,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { VOCABULARY, WORD_BY_ID } from "@/data/vocabulary";
 import { playTone, speakGerman } from "@/lib/audio";
-import type { Customer, DayRecord, SaveData, WordEntry } from "@/lib/game-types";
-import { chooseDescription, makeCandidates, scheduleReview, selectLearningWord } from "@/lib/learning";
-import { DEFAULT_SAVE, exportSave, loadSave, readSaveFile, saveGame } from "@/lib/storage";
+import type { Customer, DayRecord, LearningMode, SaveData, WordEntry } from "@/lib/game-types";
+import { chooseDescription, isGermanAnswerCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "@/lib/learning";
+import { DEFAULT_SAVE, exportSave, loadLearningMode, loadSave, readSaveFile, saveGame, saveLearningMode } from "@/lib/storage";
 
 type View = "shop" | "lexicon" | "decorate" | "stats" | "settings" | "ledger";
 type Phase = "closed" | "entering" | "waiting" | "wrong" | "success" | "paying" | "leaving" | "finished";
+type QuizStatus = "idle" | "wrong" | "correct" | "revealed";
 type ModelContextLike = { registerTool: (tool: Record<string, unknown>, options?: { signal?: AbortSignal }) => void | Promise<void> };
 
 const CUSTOMERS: Customer[] = [
@@ -129,6 +133,7 @@ function validateImportedWord(value: unknown): WordEntry {
 
 export function WortladenGame() {
   const [save, setSave] = useState<SaveData>(structuredClone(DEFAULT_SAVE));
+  const [learningMode, setLearningMode] = useState<LearningMode>("flip");
   const [ready, setReady] = useState(false);
   const [storageMessage, setStorageMessage] = useState("");
   const [view, setView] = useState<View>("shop");
@@ -145,7 +150,15 @@ export function WortladenGame() {
   const [search, setSearch] = useState("");
   const [partFilter, setPartFilter] = useState("all");
   const [sort, setSort] = useState<"word" | "mastery">("word");
-  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const [flippedIds, setFlippedIds] = useState<Set<string>>(() => new Set());
+  const [quizAnswer, setQuizAnswer] = useState("");
+  const [quizStatus, setQuizStatus] = useState<QuizStatus>("idle");
+  const [quizMessage, setQuizMessage] = useState("");
+  const pointerStart = useRef<{ id: string; x: number; y: number } | null>(null);
+  const suppressFlip = useRef<{ id: string; until: number } | null>(null);
+  const attemptedAnswers = useRef<Set<string>>(new Set());
+  const quizAccepted = useRef(false);
+  const deliveryLock = useRef(false);
   const importRef = useRef<HTMLInputElement>(null);
 
   const words = useMemo(() => [...VOCABULARY, ...save.customWords], [save.customWords]);
@@ -153,6 +166,7 @@ export function WortladenGame() {
   const reducedMotion = save.settings.reducedMotion;
 
   useEffect(() => {
+    setLearningMode(loadLearningMode());
     loadSave()
       .then((loaded) => setSave(loaded))
       .catch(() => setStorageMessage("暂时无法读取本地存档，本次进度可能不会保留。"))
@@ -168,6 +182,17 @@ export function WortladenGame() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("./sw.js").catch(() => undefined);
   }, []);
 
+  const resetStudyInteraction = useCallback(() => {
+    setFlippedIds(new Set());
+    setQuizAnswer("");
+    setQuizStatus("idle");
+    setQuizMessage("");
+    attemptedAnswers.current.clear();
+    quizAccepted.current = false;
+    pointerStart.current = null;
+    suppressFlip.current = null;
+  }, []);
+
   const prepareOrder = useCallback((data: SaveData, nextCustomer: number) => {
     const nextTarget = selectLearningWord([...VOCABULARY, ...data.customWords], data);
     const mastery = data.learning[nextTarget.id]?.mastery ?? 0;
@@ -177,7 +202,9 @@ export function WortladenGame() {
     setCustomerIndex(nextCustomer);
     setHintLevel(0);
     setPlayedId(null);
-  }, []);
+    deliveryLock.current = false;
+    resetStudyInteraction();
+  }, [resetStudyInteraction]);
 
   const startDay = useCallback(() => {
     setDay({ correct: 0, errors: 0, income: 0, weakWords: [] });
@@ -219,6 +246,67 @@ export function WortladenGame() {
     return () => lifecycle.abort();
   }, [save, startDay]);
 
+  const changeLearningMode = (mode: LearningMode) => {
+    if (mode === learningMode) return;
+    setLearningMode(mode);
+    saveLearningMode(mode);
+    resetStudyInteraction();
+  };
+
+  const toggleCard = (wordId: string) => {
+    if (phase !== "waiting" || learningMode !== "flip") return;
+    const suppressed = suppressFlip.current;
+    if (suppressed?.id === wordId && Date.now() < suppressed.until) return;
+    setFlippedIds((current) => {
+      const next = new Set(current);
+      if (next.has(wordId)) next.delete(wordId);
+      else next.add(wordId);
+      return next;
+    });
+    playTone("card", save.settings.sound);
+  };
+
+  const submitQuizAnswer = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (phase !== "waiting" || learningMode !== "quiz" || quizAccepted.current) return;
+    const normalized = normalizeGermanAnswer(quizAnswer);
+    if (!normalized) {
+      setQuizStatus("wrong");
+      setQuizMessage("请先输入一个德语单词。");
+      return;
+    }
+    if (isGermanAnswerCorrect(target, quizAnswer)) {
+      quizAccepted.current = true;
+      setQuizStatus("correct");
+      setQuizMessage("回答正确！现在可以把订单交给顾客。");
+      playTone("card", save.settings.sound);
+      return;
+    }
+
+    const repeated = attemptedAnswers.current.has(normalized);
+    attemptedAnswers.current.add(normalized);
+    setQuizStatus("wrong");
+    setQuizMessage(repeated ? "这个答案已经试过了，请换一个答案。" : "还不对，再想一想。可以修改后重新提交。");
+    playTone("wrong", save.settings.sound);
+    if (repeated) return;
+    setDay((current) => ({
+      ...current,
+      errors: current.errors + 1,
+      weakWords: current.weakWords.includes(target.id) ? current.weakWords : [...current.weakWords, target.id],
+    }));
+    setSave((current) => ({
+      ...current,
+      unlockedWordIds: Array.from(new Set([...current.unlockedWordIds, target.id])),
+      learning: { ...current.learning, [target.id]: scheduleReview(current.learning[target.id], target.id, false) },
+    }));
+  };
+
+  const revealQuizAnswer = () => {
+    if (phase !== "waiting" || quizAccepted.current) return;
+    setQuizStatus("revealed");
+    setQuizMessage(`正确答案：${wordLabel(target)}。查看答案不会自动完成订单。`);
+  };
+
   const nextCustomer = (nextSave: SaveData) => {
     const served = customerIndex + 1;
     if (served >= 5) {
@@ -238,7 +326,9 @@ export function WortladenGame() {
   };
 
   const playCard = (word: WordEntry) => {
-    if (phase !== "waiting") return;
+    if (phase !== "waiting" || deliveryLock.current) return;
+    if (learningMode === "quiz" && (!quizAccepted.current || word.id !== target.id)) return;
+    deliveryLock.current = true;
     setPlayedId(word.id);
     playTone("card", save.settings.sound);
     if (word.id !== target.id) {
@@ -254,7 +344,11 @@ export function WortladenGame() {
         unlockedWordIds: Array.from(new Set([...current.unlockedWordIds, target.id, word.id])),
         learning: { ...current.learning, [target.id]: scheduleReview(current.learning[target.id], target.id, false) },
       }));
-      window.setTimeout(() => { setPlayedId(null); setPhase("waiting"); }, reducedMotion ? 300 : 900);
+      window.setTimeout(() => {
+        deliveryLock.current = false;
+        setPlayedId(null);
+        setPhase("waiting");
+      }, reducedMotion ? 300 : 900);
       return;
     }
 
@@ -357,7 +451,7 @@ export function WortladenGame() {
       {storageMessage && <button className="toast" onClick={() => setStorageMessage("")}><span>{storageMessage}</span><X size={16} /></button>}
 
       {view === "shop" && (
-        <section className={`shop-view decor-${save.activeDecorations.join(" decor-")}`} aria-label="店铺营业场景">
+        <section className={`shop-view learning-${learningMode} decor-${save.activeDecorations.join(" decor-")}`} aria-label="店铺营业场景">
           <div className="shop-stage">
             <div className="shop-art" style={{ backgroundImage: `url(${ASSET_BASE}/assets/shop-interior.png)` }} aria-hidden="true" />
             <div className="ambient-light" aria-hidden="true" />
@@ -368,13 +462,15 @@ export function WortladenGame() {
             </div>
 
             {phase !== "closed" && phase !== "finished" && (
-              <div className={`customer-wrap phase-${phase}`}>
+              <div className={`customer-wrap phase-${learningMode === "quiz" && phase === "waiting" && quizStatus === "wrong" ? "wrong" : learningMode === "quiz" && phase === "waiting" && quizStatus === "correct" ? "success" : phase}`}>
                 <div className="order-bubble">
-                  <div className="bubble-meta"><span>{description.lang === "zh" ? "中文线索" : "Deutscher Hinweis"}</span><span>{customer.style}</span></div>
-                  <p>{description.text}</p>
-                  {hintLevel > 0 && <small>提示 {hintLevel >= 2 ? `答案含义：${target.meaning}` : `词性：${PART_LABEL[target.partOfSpeech]}`}</small>}
+                  <div className="bubble-meta"><span>{learningMode === "quiz" ? "中文释义" : description.lang === "zh" ? "中文线索" : "Deutscher Hinweis"}</span><span>{learningMode === "quiz" ? `A1 · ${PART_LABEL[target.partOfSpeech]}` : customer.style}</span></div>
+                  <p>{learningMode === "quiz" ? target.meaning : description.text}</p>
+                  {learningMode === "quiz"
+                    ? <small>请写出这个订单对应的德语单词。</small>
+                    : hintLevel > 0 && <small>提示 {hintLevel >= 2 ? `答案含义：${target.meaning}` : `词性：${PART_LABEL[target.partOfSpeech]}`}</small>}
                 </div>
-                <div className="customer-name"><strong>{customer.name}</strong><span>{phase === "wrong" ? "再想想…" : phase === "success" || phase === "paying" ? "Genau!" : "正在等候"}</span></div>
+                <div className="customer-name"><strong>{customer.name}</strong><span>{learningMode === "quiz" && quizStatus === "wrong" ? "再想想…" : learningMode === "quiz" && quizStatus === "revealed" ? "答案已揭晓" : learningMode === "quiz" && quizStatus === "correct" ? "Richtig! 等待交付" : phase === "wrong" ? "再想想…" : phase === "success" || phase === "paying" ? "Genau!" : "正在等候"}</span></div>
                 <div className="customer-sprite" style={{ backgroundImage: `url(${ASSET_BASE}/assets/customer-sprites.png)`, backgroundPosition: `${customer.spriteIndex * 33.333}% center` }} role="img" aria-label={`${customer.name} 顾客`} />
               </div>
             )}
@@ -388,7 +484,8 @@ export function WortladenGame() {
               <div className="opening-card">
                 <span className="eyebrow">今日营业准备</span>
                 <h1>把理解变成一场真正的交易</h1>
-                <p>听懂顾客的描述，从手牌中交出正确的德语词卡。今天将接待 5 位顾客。</p>
+                <p>{learningMode === "flip" ? "查看德语卡面，需要时翻卡确认中文，再把正确词卡交给顾客。" : "根据顾客给出的中文释义，输入正确德语，再完成订单交付。"}今天将接待 5 位顾客。</p>
+                <span className="current-mode">当前：{learningMode === "flip" ? "翻卡模式 · 德语 → 中文" : "问答模式 · 中文 → 德语"}</span>
                 <div className="opening-stats"><span><strong>{Object.keys(save.learning).length}</strong> 已学习</span><span><strong>{save.history.length}</strong> 营业日</span><span><strong>{save.coins}</strong> 金币</span></div>
                 <button className="primary-action" onClick={startDay}><Play size={18} fill="currentColor" />开始营业</button>
               </div>
@@ -404,31 +501,96 @@ export function WortladenGame() {
           </div>
 
           {phase !== "closed" && phase !== "finished" && (
-            <div className="hand-area">
-              <div className="hand-label"><span>你的手牌</span><small>点击，或向上拖到柜台</small></div>
-              <div className="word-hand">
+            <div className={`hand-area ${learningMode === "quiz" ? "quiz-hand" : ""}`}>
+              {learningMode === "quiz" ? (
+                <div className="quiz-panel">
+                  <div className="quiz-heading"><span>主动回忆</span><strong>写出对应的德语单词</strong><small>A1 · {PART_LABEL[target.partOfSpeech]}</small></div>
+                  <form className="quiz-form" onSubmit={submitQuizAnswer}>
+                    <label htmlFor="quiz-answer">德语答案</label>
+                    <div className="quiz-input-row">
+                      <input
+                        id="quiz-answer"
+                        value={quizAnswer}
+                        onChange={(event) => {
+                          setQuizAnswer(event.target.value);
+                          if (quizStatus === "wrong" || quizStatus === "revealed") {
+                            setQuizStatus("idle");
+                            setQuizMessage("");
+                          }
+                        }}
+                        onFocus={(event) => {
+                          const input = event.currentTarget;
+                          window.setTimeout(() => input.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" }), 180);
+                        }}
+                        disabled={phase !== "waiting" || quizStatus === "correct"}
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        enterKeyHint="done"
+                        inputMode="text"
+                        placeholder="输入德语单词"
+                      />
+                      <button type="submit" className="quiz-submit" disabled={phase !== "waiting" || quizStatus === "correct" || !quizAnswer.trim()}><Send size={17} />提交答案</button>
+                    </div>
+                    <div className="quiz-actions">
+                      <button type="button" onClick={revealQuizAnswer} disabled={phase !== "waiting" || quizStatus === "correct"}><Eye size={16} />查看答案</button>
+                      <button type="button" className="quiz-deliver" onClick={() => playCard(target)} disabled={phase !== "waiting" || quizStatus !== "correct"}><Landmark size={16} />交付订单</button>
+                    </div>
+                    <p className={`quiz-feedback status-${quizStatus}`} aria-live="polite">{quizMessage || "忽略首尾空格和大小写；ä、ö、ü、ß 需要准确输入。"}</p>
+                  </form>
+                </div>
+              ) : <>
+                <div className="hand-label"><span>你的手牌</span><small>轻点翻卡 · 向上拖动交付</small></div>
+                <div className="word-hand">
                 {candidates.map((word, index) => {
                   const mastery = save.learning[word.id]?.mastery ?? 0;
+                  const flipped = flippedIds.has(word.id);
                   return (
                     <button
                       key={word.id}
-                      className={`word-card pos-${word.partOfSpeech} ${playedId === word.id ? (word.id === target.id ? "played-correct" : "played-wrong") : ""}`}
+                      className={`word-card pos-${word.partOfSpeech} ${flipped ? "is-flipped" : ""} ${playedId === word.id ? (word.id === target.id ? "played-correct" : "played-wrong") : ""}`}
                       style={{ "--card-index": index, "--card-count": candidates.length } as React.CSSProperties}
-                      onClick={() => playCard(word)}
-                      onPointerDown={(event) => { pointerStart.current = { x: event.clientX, y: event.clientY }; }}
-                      onPointerUp={(event) => { if (pointerStart.current && pointerStart.current.y - event.clientY > 34) playCard(word); pointerStart.current = null; }}
+                      onClick={() => toggleCard(word.id)}
+                      onKeyDown={(event) => { if (event.key === "ArrowUp") { event.preventDefault(); playCard(word); } }}
+                      onPointerDown={(event) => {
+                        pointerStart.current = { id: word.id, x: event.clientX, y: event.clientY };
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      }}
+                      onPointerUp={(event) => {
+                        const start = pointerStart.current;
+                        const rise = start ? start.y - event.clientY : 0;
+                        const sideways = start ? Math.abs(start.x - event.clientX) : 0;
+                        if (start?.id === word.id && rise > 34 && rise > sideways) {
+                          suppressFlip.current = { id: word.id, until: Date.now() + 500 };
+                          playCard(word);
+                        }
+                        pointerStart.current = null;
+                      }}
+                      onPointerCancel={() => { pointerStart.current = null; }}
                       disabled={phase !== "waiting"}
-                      aria-label={`出牌 ${wordLabel(word)}，${word.meaning}`}
+                      aria-pressed={flipped}
+                      aria-label={flipped ? `${wordLabel(word)}，中文释义：${word.meaning}。点击翻回；按向上方向键交付` : `${wordLabel(word)}。点击翻面查看中文；按向上方向键交付`}
                     >
-                      <span className="card-ribbon">A1 · {PART_LABEL[word.partOfSpeech]}</span>
-                      <span className="card-glyph"><WordGlyph word={word} /></span>
-                      <strong>{wordLabel(word)}</strong>
-                      <small>{word.meaning}</small>
+                      <span className="word-card-inner">
+                        <span className="card-face card-front" aria-hidden={flipped}>
+                          <span className="card-ribbon">A1 · {PART_LABEL[word.partOfSpeech]}</span>
+                          <span className="card-glyph"><WordGlyph word={word} /></span>
+                          <strong>{wordLabel(word)}</strong>
+                          <small>点击查看中文</small>
+                        </span>
+                        <span className="card-face card-back" aria-hidden={!flipped}>
+                          <span className="card-ribbon">中文释义</span>
+                          <strong className="card-meaning">{word.meaning}</strong>
+                          <small>点击翻回德语</small>
+                        </span>
+                      </span>
                       <span className="mastery-pips" aria-label={`熟练度 ${mastery}%`}><i style={{ width: `${mastery}%` }} /></span>
                     </button>
                   );
                 })}
-              </div>
+                </div>
+              </>}
             </div>
           )}
         </section>
@@ -479,6 +641,13 @@ export function WortladenGame() {
         <section className="panel-view settings-view">
           <div className="panel-heading"><div><span className="eyebrow">Einstellungen</span><h1>设置与备份</h1><p>音频会在第一次交互后启用；清除浏览器网站数据会删除本地存档。</p></div></div>
           <div className="settings-grid">
+            <article className="learning-mode-setting">
+              <div className="mode-setting-copy"><Keyboard /><span><h2>学习模式</h2><p>随时切换；当前订单不会重复结算。</p></span></div>
+              <div className="mode-options" role="radiogroup" aria-label="学习模式">
+                <button type="button" role="radio" aria-checked={learningMode === "flip"} className={learningMode === "flip" ? "active" : ""} onClick={() => changeLearningMode("flip")}><strong>翻卡模式</strong><span>德语正面 · 点击查看中文</span><small>适合认识和记忆单词</small></button>
+                <button type="button" role="radio" aria-checked={learningMode === "quiz"} className={learningMode === "quiz" ? "active" : ""} onClick={() => changeLearningMode("quiz")}><strong>问答模式</strong><span>中文提示 · 输入德语单词</span><small>适合主动回忆和拼写</small></button>
+              </div>
+            </article>
             <article><div><Volume2 /><span><h2>游戏音效</h2><p>门铃、卡牌、金币与升级提示。</p></span></div><Switch checked={save.settings.sound} onCheckedChange={(checked) => setSave((current) => ({ ...current, settings: { ...current.settings, sound: checked } }))} aria-label="游戏音效" /></article>
             <article><div><Sparkles /><span><h2>减少动画</h2><p>保留反馈，但缩短位移和等待。</p></span></div><Switch checked={save.settings.reducedMotion} onCheckedChange={(checked) => setSave((current) => ({ ...current, settings: { ...current.settings, reducedMotion: checked } }))} aria-label="减少动画" /></article>
             <article className="range-setting"><div><BookOpen /><span><h2>每日新词</h2><p>当前 {save.settings.dailyNewWords} 个</p></span></div><input type="range" min="5" max="30" step="5" value={save.settings.dailyNewWords} onChange={(event) => setSave((current) => ({ ...current, settings: { ...current.settings, dailyNewWords: Number(event.target.value) } }))} /></article>
@@ -503,3 +672,4 @@ export function WortladenGame() {
     </main>
   );
 }
+
