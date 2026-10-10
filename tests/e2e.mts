@@ -232,6 +232,26 @@ const cardBoxes: Array<{ left: number; right: number; width: number }> = await m
 assert.equal(cardBoxes.length, 5);
 assert.ok(cardBoxes.every((box) => box.left >= 0 && box.right <= 390));
 assert.ok(cardBoxes.every((box) => box.width >= 60));
+assert.ok(await mobile.locator(".card-word.is-long").count() > 0);
+const longWordFits = await mobile.locator(".word-card").first().evaluate((card: Element) => {
+  const title = card.querySelector(".card-word");
+  const plural = card.querySelector(".card-plural");
+  const face = card.querySelector(".card-front");
+  if (!title || !plural || !face) return false;
+  title.className = "card-word has-article is-long";
+  title.innerHTML = '<span class="card-article">die</span><span class="card-lemma">Schwester</span>';
+  plural.textContent = "复数 · Schwestern";
+  const titleBox = title.getBoundingClientRect();
+  const pluralBox = plural.getBoundingClientRect();
+  const faceBox = face.getBoundingClientRect();
+  return titleBox.left >= faceBox.left
+    && titleBox.right <= faceBox.right
+    && pluralBox.left >= faceBox.left
+    && pluralBox.right <= faceBox.right
+    && titleBox.bottom <= pluralBox.top + 1;
+});
+assert.equal(longWordFits, true);
+await mobile.screenshot({ path: "test-results/mobile-long-card.png", fullPage: false });
 await mobile.locator(".word-card").first().click();
 assert.ok((await mobile.locator(".word-card").first().getAttribute("class"))?.includes("is-flipped"));
 await mobile.getByRole("button", { name: "设置" }).click();
@@ -255,7 +275,7 @@ console.log(JSON.stringify({
   flipMode: { clue, correct: correctLabel, frontHidesChinese: true, flipsBothWays: true, dragDelivers: true },
   quizMode: { revealDoesNotDeliver: true, retryWorks: true, enterSubmits: true, duplicateRewardBlocked: true, persistedAfterReload: true },
   persistence: { decoration: "rug", survivedReload: true },
-  mobile: { viewport: "390x844", horizontalOverflow: false, fiveCardsVisible: true, quizControlsVisible: true, inputFontSize: "16px" },
+  mobile: { viewport: "390x844", horizontalOverflow: false, fiveCardsVisible: true, longWordsFit: true, quizControlsVisible: true, inputFontSize: "16px" },
 }, null, 2));
 
 await browser.close();

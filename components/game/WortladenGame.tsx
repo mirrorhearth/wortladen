@@ -631,6 +631,7 @@ export function WortladenGame() {
                 {candidates.map((word, index) => {
                   const mastery = save.learning[word.id]?.mastery ?? 0;
                   const flipped = flippedIds.has(word.id);
+                  const compactCardWord = wordLabel(word).length >= 10;
                   const pluralHint = hasLearnablePlural(word) ? `，复数 ${word.plural}` : word.partOfSpeech === "noun" && word.plural === "—" ? "，通常无复数" : "";
                   return (
                     <button
@@ -662,7 +663,10 @@ export function WortladenGame() {
                         <span className="card-face card-front" aria-hidden={flipped}>
                           <span className="card-ribbon">A1 · {PART_LABEL[word.partOfSpeech]}</span>
                           <span className="card-glyph"><WordGlyph word={word} /></span>
-                          <strong>{wordLabel(word)}</strong>
+                          <strong className={`card-word ${word.article ? "has-article" : ""} ${compactCardWord ? "is-long" : ""}`}>
+                            {word.article && <span className="card-article">{word.article}</span>}
+                            <span className="card-lemma">{word.word}</span>
+                          </strong>
                           {word.partOfSpeech === "noun" && word.plural && <span className={`card-plural ${word.plural === "—" ? "no-plural" : ""}`}>{word.plural === "—" ? "通常无复数" : `复数 · ${word.plural}`}</span>}
                           <small>点击查看中文</small>
                         </span>
