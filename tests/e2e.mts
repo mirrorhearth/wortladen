@@ -222,6 +222,27 @@ await mobile.goto("http://127.0.0.1:4173/", { waitUntil: "networkidle" });
 await mobile.getByRole("button", { name: "营业", exact: true }).click();
 await mobile.getByRole("button", { name: /开始营业/ }).click();
 await mobile.waitForSelector(".phase-waiting");
+await mobile.locator(".shop-view").evaluate((shop: Element) => {
+  shop.classList.add("decor-wallpaper", "decor-rug", "decor-lamp", "decor-curtain", "decor-counter");
+});
+const decorGeometry = await mobile.locator(".shop-stage").evaluate((stage: Element) => {
+  const stageBox = stage.getBoundingClientRect();
+  const curtain = stage.querySelector(".curtain-layer");
+  const counter = stage.querySelector(".counter-cloth");
+  if (!curtain || !counter) return null;
+  const curtainStyle = getComputedStyle(curtain, "::before");
+  const rugStyle = getComputedStyle(stage, "::before");
+  const counterBox = counter.getBoundingClientRect();
+  return {
+    curtainRatio: Number.parseFloat(curtainStyle.width) / stageBox.width,
+    counterRatio: counterBox.width / stageBox.width,
+    rugRatio: Number.parseFloat(rugStyle.width) / stageBox.width,
+  };
+});
+assert.ok(decorGeometry);
+assert.ok(decorGeometry.curtainRatio <= 0.12);
+assert.ok(decorGeometry.counterRatio <= 0.36);
+assert.ok(decorGeometry.rugRatio <= 0.68);
 const widths = await mobile.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
 assert.equal(widths.scroll, widths.client);
 assert.ok(await mobile.locator(".money-bag-on-counter").isVisible());
@@ -275,7 +296,7 @@ console.log(JSON.stringify({
   flipMode: { clue, correct: correctLabel, frontHidesChinese: true, flipsBothWays: true, dragDelivers: true },
   quizMode: { revealDoesNotDeliver: true, retryWorks: true, enterSubmits: true, duplicateRewardBlocked: true, persistedAfterReload: true },
   persistence: { decoration: "rug", survivedReload: true },
-  mobile: { viewport: "390x844", horizontalOverflow: false, fiveCardsVisible: true, longWordsFit: true, quizControlsVisible: true, inputFontSize: "16px" },
+  mobile: { viewport: "390x844", horizontalOverflow: false, fiveCardsVisible: true, longWordsFit: true, decorationsPerspectiveBounded: true, quizControlsVisible: true, inputFontSize: "16px" },
 }, null, 2));
 
 await browser.close();
