@@ -74,6 +74,8 @@ for (let customerNumber = 2; customerNumber <= 5; customerNumber += 1) {
 await page.waitForSelector(".ledger-paper");
 assert.equal((await page.locator(".ledger-stats strong").first().innerText()).trim(), "5");
 await page.getByRole("button", { name: "图鉴", exact: true }).click();
+await page.locator('.filters input').fill("Büro");
+assert.match(await page.locator(".lexicon-card").innerText(), /das Büro[\s\S]*办公室/);
 await page.locator('input[type="file"][accept=".json,.csv"]').setInputFiles("tests/fixtures/custom-word.json");
 await page.waitForSelector("text=已导入 1 个词汇。");
 await page.locator('.filters input').fill("tanzen");

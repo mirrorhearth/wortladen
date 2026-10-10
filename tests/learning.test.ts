@@ -4,8 +4,14 @@ import { VOCABULARY } from "../data/vocabulary.ts";
 import { isGermanAnswerCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "../lib/learning.ts";
 import { DEFAULT_SAVE } from "../lib/storage.ts";
 
-test("the MVP ships exactly 50 checked starter words", () => {
-  assert.equal(VOCABULARY.length, 50);
+test("the game ships exactly 80 checked A1 words", () => {
+  assert.equal(VOCABULARY.length, 80);
+  const addedIds = [
+    "abend", "adresse", "arzt", "auto", "brot", "bruder", "buero", "eltern", "fahren", "fahrrad",
+    "film", "finden", "fragen", "geburtstag", "gemuese", "hotel", "hoeren", "kueche", "milch", "musik",
+    "name", "preis", "rechnung", "schwester", "telefon", "tuer", "urlaub", "wetter", "wohnung", "zug",
+  ];
+  assert.deepEqual(addedIds.filter((id) => !VOCABULARY.some((word) => word.id === id)), []);
   for (const word of VOCABULARY) {
     assert.ok(word.descriptions.zh.length >= 2);
     assert.ok(word.descriptions.de.length >= 2);
