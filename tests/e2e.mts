@@ -8,6 +8,7 @@ const { chromium } = require("C:/Users/user/.cache/codex-runtimes/codex-primary-
 const browser = await chromium.launch({ headless: true, executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
+await page.addInitScript(() => { Math.random = () => 0; });
 const errors: string[] = [];
 page.on("console", (message: { type(): string; text(): string }) => { if (message.type() === "error") errors.push(message.text()); });
 page.on("pageerror", (error: Error) => errors.push(error.message));
@@ -27,12 +28,13 @@ let wrongIndex = -1;
 let correctIndex = -1;
 for (let index = 0; index < count; index += 1) {
   const label = await cards.nth(index).getAttribute("aria-label");
-  if (label?.startsWith(`${correctLabel}。`)) correctIndex = index;
+  if (label?.startsWith(`${correctLabel}。`) || label?.startsWith(`${correctLabel}，`)) correctIndex = index;
   else if (wrongIndex < 0) wrongIndex = index;
 }
 assert.ok(wrongIndex >= 0);
 assert.ok(correctIndex >= 0);
 assert.ok(!(await cards.nth(correctIndex).getAttribute("aria-label"))?.includes(target.meaning));
+assert.match(await cards.nth(correctIndex).innerText(), new RegExp(`复数 · ${target.plural}`));
 await cards.nth(correctIndex).click();
 assert.ok((await cards.nth(correctIndex).getAttribute("class"))?.includes("is-flipped"));
 assert.ok((await cards.nth(correctIndex).getAttribute("aria-label"))?.includes(target.meaning));
@@ -65,7 +67,7 @@ for (let customerNumber = 2; customerNumber <= 5; customerNumber += 1) {
   const nextTarget = VOCABULARY.find((word) => [...word.descriptions.zh, ...word.descriptions.de].includes(nextClue));
   assert.ok(nextTarget, `No word matched clue ${nextClue}`);
   const nextLabel = nextTarget.article ? `${nextTarget.article} ${nextTarget.word}` : nextTarget.word;
-  const nextCard = page.getByRole("button", { name: new RegExp(`^${nextLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}。`) });
+  const nextCard = page.getByRole("button", { name: new RegExp(`^${nextLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[。，]`) });
   await nextCard.focus();
   await nextCard.press("ArrowUp");
   await page.waitForSelector(".phase-paying");
@@ -108,15 +110,19 @@ const revealButton = page.getByRole("button", { name: "查看答案" });
 const deliverButton = page.getByRole("button", { name: "交付订单" });
 await revealButton.click();
 const revealed = await page.locator(".quiz-feedback").innerText();
-const revealedMatch = revealed.match(/正确答案：(.+?)。/);
+const revealedMatch = revealed.match(/正确答案：(.+?)(?:；复数：(.+?))?。/);
 assert.ok(revealedMatch);
 const quizCorrectAnswer = revealedMatch[1];
+const quizCorrectPlural = revealedMatch[2];
+assert.ok(quizCorrectPlural);
 assert.equal(await deliverButton.isDisabled(), true);
 
-const quizInput = page.getByLabel("德语答案");
+const quizInput = page.locator(".quiz-word-input");
+const quizPluralInput = page.getByLabel("德语复数");
 const balanceBeforeWrongAnswer = Number(await page.locator(".coin-purse strong").innerText());
 const progressBeforeWrongAnswer = (await page.locator(".day-progress strong").innerText()).trim();
 await quizInput.fill("definitelywrong");
+await quizPluralInput.fill("definitelywrong");
 await page.getByRole("button", { name: "提交答案" }).click();
 assert.match(await page.locator(".quiz-feedback").innerText(), /还不对/);
 assert.equal(await deliverButton.isDisabled(), true);
@@ -126,8 +132,13 @@ assert.equal((await page.locator(".day-progress strong").innerText()).trim(), pr
 await page.getByRole("button", { name: "提交答案" }).click();
 assert.match(await page.locator(".quiz-feedback").innerText(), /已经试过/);
 await quizInput.fill(`  ${quizCorrectAnswer.toLocaleUpperCase("de-DE")}  `);
-await quizInput.press("Enter");
-assert.match(await page.locator(".quiz-feedback").innerText(), /回答正确/);
+await quizPluralInput.fill("wrongplural");
+await quizPluralInput.press("Enter");
+assert.match(await page.locator(".quiz-feedback").innerText(), /单数正确，复数还不对/);
+assert.equal(await deliverButton.isDisabled(), true);
+await quizPluralInput.fill(`  ${quizCorrectPlural.toLocaleUpperCase("de-DE")}  `);
+await quizPluralInput.press("Enter");
+assert.match(await page.locator(".quiz-feedback").innerText(), /单数和复数都正确/);
 assert.equal(await deliverButton.isEnabled(), true);
 const balanceBeforeQuizDelivery = Number(await page.locator(".coin-purse strong").innerText());
 await deliverButton.click();
@@ -136,7 +147,7 @@ await page.waitForFunction((balance: number) => Number(document.querySelector(".
 await page.waitForSelector(".phase-waiting");
 assert.equal((await page.locator(".day-progress strong").innerText()).trim(), "2 / 5");
 
-await page.getByLabel("德语答案").fill("temporary");
+await page.locator(".quiz-word-input").fill("temporary");
 await page.getByRole("button", { name: "查看答案" }).click();
 await page.getByRole("button", { name: "设置" }).click();
 await page.getByRole("radio", { name: /翻卡模式/ }).click();
@@ -146,12 +157,13 @@ assert.equal(await page.locator(".word-card.is-flipped").count(), 0);
 await page.getByRole("button", { name: "设置" }).click();
 await page.getByRole("radio", { name: /问答模式/ }).click();
 await page.getByRole("button", { name: "营业", exact: true }).click();
-assert.equal(await page.getByLabel("德语答案").inputValue(), "");
+assert.equal(await page.locator(".quiz-word-input").inputValue(), "");
 assert.equal((await page.locator(".day-progress strong").innerText()).trim(), "2 / 5");
 await page.screenshot({ path: "test-results/quiz-desktop.png", fullPage: true });
 
 const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const mobile = await mobileContext.newPage();
+await mobile.addInitScript(() => { Math.random = () => 0; });
 mobile.on("console", (message: { type(): string; text(): string }) => { if (message.type() === "error") errors.push(message.text()); });
 mobile.on("pageerror", (error: Error) => errors.push(error.message));
 await mobile.goto("http://127.0.0.1:4173/", { waitUntil: "networkidle" });
@@ -173,7 +185,8 @@ assert.ok((await mobile.locator(".word-card").first().getAttribute("class"))?.in
 await mobile.getByRole("button", { name: "设置" }).click();
 await mobile.getByRole("radio", { name: /问答模式/ }).click();
 await mobile.getByRole("button", { name: "营业", exact: true }).click();
-const mobileQuizInput = mobile.getByLabel("德语答案");
+const mobileQuizInput = mobile.locator(".quiz-word-input");
+const mobileQuizPluralInput = mobile.getByLabel("德语复数");
 await mobileQuizInput.focus();
 const quizControlBoxes: Array<{ left: number; right: number }> = await mobile.locator(".quiz-input-row input, .quiz-input-row button").evaluateAll((elements: Element[]) => elements.map((element: Element) => {
   const box = element.getBoundingClientRect();
@@ -181,6 +194,7 @@ const quizControlBoxes: Array<{ left: number; right: number }> = await mobile.lo
 }));
 assert.ok(quizControlBoxes.every((box) => box.left >= 0 && box.right <= 390));
 assert.equal(await mobileQuizInput.evaluate((input: Element) => getComputedStyle(input).fontSize), "16px");
+assert.equal(await mobileQuizPluralInput.evaluate((input: Element) => getComputedStyle(input).fontSize), "16px");
 await mobile.screenshot({ path: "test-results/mobile.png", fullPage: true });
 await mobileContext.close();
 

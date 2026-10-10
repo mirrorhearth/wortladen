@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { VOCABULARY } from "../data/vocabulary.ts";
-import { isGermanAnswerCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "../lib/learning.ts";
+import { hasLearnablePlural, isGermanAnswerCorrect, isGermanPluralCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "../lib/learning.ts";
 import { DEFAULT_SAVE } from "../lib/storage.ts";
 
 test("the game ships exactly 80 checked A1 words", () => {
@@ -68,6 +68,20 @@ test("quiz accepts the target word and an explicit noun article without changing
   assert.equal(isGermanAnswerCorrect(book, "das Buch"), true);
   assert.equal(isGermanAnswerCorrect(book, "der Buch"), false);
 });
+
+test("noun plural answers stay strict about German letters", () => {
+  const book = VOCABULARY.find((word) => word.id === "buch")!;
+  const water = VOCABULARY.find((word) => word.id === "wasser")!;
+  const parents = VOCABULARY.find((word) => word.id === "eltern")!;
+  assert.equal(hasLearnablePlural(book), true);
+  assert.equal(isGermanPluralCorrect(book, "  BÜCHER  "), true);
+  assert.equal(isGermanPluralCorrect(book, "Bucher"), false);
+  assert.equal(isGermanPluralCorrect(book, "Buecher"), false);
+  assert.equal(hasLearnablePlural(water), false);
+  assert.equal(hasLearnablePlural(parents), false);
+  assert.equal(isGermanPluralCorrect(water, ""), true);
+});
+
 test("quiz never accepts a different vocabulary entry as the current answer", () => {
   for (const target of VOCABULARY) {
     for (const other of VOCABULARY) {

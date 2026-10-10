@@ -35,7 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { VOCABULARY, WORD_BY_ID } from "@/data/vocabulary";
 import { playTone, speakGerman } from "@/lib/audio";
 import type { Customer, DayRecord, LearningMode, SaveData, WordEntry } from "@/lib/game-types";
-import { chooseDescription, isGermanAnswerCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "@/lib/learning";
+import { chooseDescription, hasLearnablePlural, isGermanAnswerCorrect, isGermanPluralCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "@/lib/learning";
 import { DEFAULT_SAVE, exportSave, loadLearningMode, loadSave, readSaveFile, saveGame, saveLearningMode } from "@/lib/storage";
 
 type View = "shop" | "lexicon" | "decorate" | "stats" | "settings" | "ledger";
@@ -152,6 +152,7 @@ export function WortladenGame() {
   const [sort, setSort] = useState<"word" | "mastery">("word");
   const [flippedIds, setFlippedIds] = useState<Set<string>>(() => new Set());
   const [quizAnswer, setQuizAnswer] = useState("");
+  const [quizPluralAnswer, setQuizPluralAnswer] = useState("");
   const [quizStatus, setQuizStatus] = useState<QuizStatus>("idle");
   const [quizMessage, setQuizMessage] = useState("");
   const pointerStart = useRef<{ id: string; x: number; y: number } | null>(null);
@@ -161,10 +162,12 @@ export function WortladenGame() {
   const quizAcceptedOrder = useRef<number | null>(null);
   const deliveryLock = useRef(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const pluralInputRef = useRef<HTMLInputElement>(null);
 
   const words = useMemo(() => [...VOCABULARY, ...save.customWords], [save.customWords]);
   const customer = CUSTOMERS[customerIndex % CUSTOMERS.length];
   const reducedMotion = save.settings.reducedMotion;
+  const targetNeedsPlural = hasLearnablePlural(target);
 
   useEffect(() => {
     setLearningMode(loadLearningMode());
@@ -186,6 +189,7 @@ export function WortladenGame() {
   const resetStudyInteraction = useCallback(() => {
     setFlippedIds(new Set());
     setQuizAnswer("");
+    setQuizPluralAnswer("");
     setQuizStatus("idle");
     setQuizMessage("");
     attemptedAnswers.current.clear();
@@ -273,23 +277,36 @@ export function WortladenGame() {
     if (phase !== "waiting" || learningMode !== "quiz" || quizStatus === "correct") return;
     quizAcceptedOrder.current = null;
     const normalized = normalizeGermanAnswer(quizAnswer);
+    const normalizedPlural = normalizeGermanAnswer(quizPluralAnswer);
     if (!normalized) {
       setQuizStatus("wrong");
       setQuizMessage("请先输入一个德语单词。");
       return;
     }
-    if (isGermanAnswerCorrect(target, quizAnswer)) {
+    if (targetNeedsPlural && !normalizedPlural) {
+      setQuizStatus("wrong");
+      setQuizMessage("还需要填写这个名词的复数形式。");
+      return;
+    }
+    const singularCorrect = isGermanAnswerCorrect(target, quizAnswer);
+    const pluralCorrect = isGermanPluralCorrect(target, quizPluralAnswer);
+    if (singularCorrect && pluralCorrect) {
       quizAcceptedOrder.current = orderSerial.current;
       setQuizStatus("correct");
-      setQuizMessage("回答正确！现在可以把订单交给顾客。");
+      setQuizMessage(targetNeedsPlural ? "单数和复数都正确！现在可以交付订单。" : "回答正确！现在可以把订单交给顾客。");
       playTone("card", save.settings.sound);
       return;
     }
 
-    const repeated = attemptedAnswers.current.has(normalized);
-    attemptedAnswers.current.add(normalized);
+    const attemptKey = `${normalized}|${normalizedPlural}`;
+    const repeated = attemptedAnswers.current.has(attemptKey);
+    attemptedAnswers.current.add(attemptKey);
     setQuizStatus("wrong");
-    setQuizMessage(repeated ? "这个答案已经试过了，请换一个答案。" : "还不对，再想一想。可以修改后重新提交。");
+    setQuizMessage(repeated
+      ? "这组答案已经试过了，请修改后再提交。"
+      : singularCorrect && !pluralCorrect
+        ? "单数正确，复数还不对，再想一想。"
+        : "德语单词还不对，再想一想。可以修改后重新提交。");
     playTone("wrong", save.settings.sound);
     if (repeated) return;
     setDay((current) => ({
@@ -308,7 +325,7 @@ export function WortladenGame() {
     if (phase !== "waiting" || quizStatus === "correct") return;
     quizAcceptedOrder.current = null;
     setQuizStatus("revealed");
-    setQuizMessage(`正确答案：${wordLabel(target)}。查看答案不会自动完成订单。`);
+    setQuizMessage(`正确答案：${wordLabel(target)}${targetNeedsPlural ? `；复数：${target.plural}` : ""}。查看答案不会自动完成订单。`);
   };
 
   const nextCustomer = (nextSave: SaveData) => {
@@ -511,40 +528,79 @@ export function WortladenGame() {
             <div className={`hand-area ${learningMode === "quiz" ? "quiz-hand" : ""}`}>
               {learningMode === "quiz" ? (
                 <div className="quiz-panel">
-                  <div className="quiz-heading"><span>主动回忆</span><strong>写出对应的德语单词</strong><small>A1 · {PART_LABEL[target.partOfSpeech]}</small></div>
+                  <div className="quiz-heading"><span>主动回忆</span><strong>{targetNeedsPlural ? "写出名词和复数" : "写出对应的德语单词"}</strong><small>A1 · {PART_LABEL[target.partOfSpeech]}{targetNeedsPlural ? " · 复数训练" : ""}</small></div>
                   <form className="quiz-form" onSubmit={submitQuizAnswer}>
-                    <label htmlFor="quiz-answer">德语答案</label>
-                    <div className="quiz-input-row">
-                      <input
-                        id="quiz-answer"
-                        value={quizAnswer}
-                        onChange={(event) => {
-                          setQuizAnswer(event.target.value);
-                          if (quizStatus === "wrong" || quizStatus === "revealed") {
-                            setQuizStatus("idle");
-                            setQuizMessage("");
-                          }
-                        }}
-                        onFocus={(event) => {
-                          const input = event.currentTarget;
-                          window.setTimeout(() => input.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" }), 180);
-                        }}
-                        disabled={phase !== "waiting" || quizStatus === "correct"}
-                        autoComplete="off"
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                        spellCheck={false}
-                        enterKeyHint="done"
-                        inputMode="text"
-                        placeholder="输入德语单词"
-                      />
-                      <button type="submit" className="quiz-submit" disabled={phase !== "waiting" || quizStatus === "correct" || !quizAnswer.trim()}><Send size={17} />提交答案</button>
+                    <div className={`quiz-input-row ${targetNeedsPlural ? "has-plural" : ""}`}>
+                      <label className="quiz-answer-field" htmlFor="quiz-answer">
+                        <span>{targetNeedsPlural ? "德语单数" : "德语答案"}</span>
+                        <input
+                          className="quiz-word-input"
+                          id="quiz-answer"
+                          value={quizAnswer}
+                          onChange={(event) => {
+                            setQuizAnswer(event.target.value);
+                            if (quizStatus === "wrong" || quizStatus === "revealed") {
+                              setQuizStatus("idle");
+                              setQuizMessage("");
+                            }
+                          }}
+                          onFocus={(event) => {
+                            const input = event.currentTarget;
+                            window.setTimeout(() => input.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" }), 180);
+                          }}
+                          onKeyDown={(event) => {
+                            if (targetNeedsPlural && event.key === "Enter") {
+                              event.preventDefault();
+                              pluralInputRef.current?.focus();
+                            }
+                          }}
+                          disabled={phase !== "waiting" || quizStatus === "correct"}
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          enterKeyHint={targetNeedsPlural ? "next" : "done"}
+                          inputMode="text"
+                          placeholder={targetNeedsPlural ? "如：das Buch" : "输入德语单词"}
+                        />
+                      </label>
+                      {targetNeedsPlural && (
+                        <label className="quiz-answer-field" htmlFor="quiz-plural-answer">
+                          <span>德语复数</span>
+                          <input
+                            ref={pluralInputRef}
+                            className="quiz-plural-input"
+                            id="quiz-plural-answer"
+                            value={quizPluralAnswer}
+                            onChange={(event) => {
+                              setQuizPluralAnswer(event.target.value);
+                              if (quizStatus === "wrong" || quizStatus === "revealed") {
+                                setQuizStatus("idle");
+                                setQuizMessage("");
+                              }
+                            }}
+                            onFocus={(event) => {
+                              const input = event.currentTarget;
+                              window.setTimeout(() => input.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" }), 180);
+                            }}
+                            disabled={phase !== "waiting" || quizStatus === "correct"}
+                            autoComplete="off"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            enterKeyHint="done"
+                            inputMode="text"
+                            placeholder="如：Bücher"
+                          />
+                        </label>
+                      )}
+                      <button type="submit" className="quiz-submit" disabled={phase !== "waiting" || quizStatus === "correct" || !quizAnswer.trim() || (targetNeedsPlural && !quizPluralAnswer.trim())}><Send size={17} />提交答案</button>
                     </div>
                     <div className="quiz-actions">
                       <button type="button" onClick={revealQuizAnswer} disabled={phase !== "waiting" || quizStatus === "correct"}><Eye size={16} />查看答案</button>
                       <button type="button" className="quiz-deliver" onClick={() => playCard(target)} disabled={phase !== "waiting" || quizStatus !== "correct"}><Landmark size={16} />交付订单</button>
                     </div>
-                    <p className={`quiz-feedback status-${quizStatus}`} aria-live="polite">{quizMessage || "忽略首尾空格和大小写；ä、ö、ü、ß 需要准确输入。"}</p>
+                    <p className={`quiz-feedback status-${quizStatus}`} aria-live="polite">{quizMessage || (targetNeedsPlural ? "单数可带冠词；复数需准确填写。ä、ö、ü、ß 不能替换。" : "忽略首尾空格和大小写；ä、ö、ü、ß 需要准确输入。")}</p>
                   </form>
                 </div>
               ) : <>
@@ -553,6 +609,7 @@ export function WortladenGame() {
                 {candidates.map((word, index) => {
                   const mastery = save.learning[word.id]?.mastery ?? 0;
                   const flipped = flippedIds.has(word.id);
+                  const pluralHint = hasLearnablePlural(word) ? `，复数 ${word.plural}` : word.partOfSpeech === "noun" && word.plural === "—" ? "，通常无复数" : "";
                   return (
                     <button
                       key={word.id}
@@ -577,18 +634,20 @@ export function WortladenGame() {
                       onPointerCancel={() => { pointerStart.current = null; }}
                       disabled={phase !== "waiting"}
                       aria-pressed={flipped}
-                      aria-label={flipped ? `${wordLabel(word)}，中文释义：${word.meaning}。点击翻回；按向上方向键交付` : `${wordLabel(word)}。点击翻面查看中文；按向上方向键交付`}
+                      aria-label={flipped ? `${wordLabel(word)}${pluralHint}，中文释义：${word.meaning}。点击翻回；按向上方向键交付` : `${wordLabel(word)}${pluralHint}。点击翻面查看中文；按向上方向键交付`}
                     >
                       <span className="word-card-inner">
                         <span className="card-face card-front" aria-hidden={flipped}>
                           <span className="card-ribbon">A1 · {PART_LABEL[word.partOfSpeech]}</span>
                           <span className="card-glyph"><WordGlyph word={word} /></span>
                           <strong>{wordLabel(word)}</strong>
+                          {word.partOfSpeech === "noun" && word.plural && <span className={`card-plural ${word.plural === "—" ? "no-plural" : ""}`}>{word.plural === "—" ? "通常无复数" : `复数 · ${word.plural}`}</span>}
                           <small>点击查看中文</small>
                         </span>
                         <span className="card-face card-back" aria-hidden={!flipped}>
                           <span className="card-ribbon">中文释义</span>
                           <strong className="card-meaning">{word.meaning}</strong>
+                          {word.partOfSpeech === "noun" && word.plural && <span className="card-back-plural">{word.plural === "—" ? "通常无复数" : `${wordLabel(word)} → ${word.plural}`}</span>}
                           <small>点击翻回德语</small>
                         </span>
                       </span>
@@ -651,8 +710,8 @@ export function WortladenGame() {
             <article className="learning-mode-setting">
               <div className="mode-setting-copy"><Keyboard /><span><h2>学习模式</h2><p>随时切换；当前订单不会重复结算。</p></span></div>
               <div className="mode-options" role="radiogroup" aria-label="学习模式">
-                <button type="button" role="radio" aria-checked={learningMode === "flip"} className={learningMode === "flip" ? "active" : ""} onClick={() => changeLearningMode("flip")}><strong>翻卡模式</strong><span>德语正面 · 点击查看中文</span><small>适合认识和记忆单词</small></button>
-                <button type="button" role="radio" aria-checked={learningMode === "quiz"} className={learningMode === "quiz" ? "active" : ""} onClick={() => changeLearningMode("quiz")}><strong>问答模式</strong><span>中文提示 · 输入德语单词</span><small>适合主动回忆和拼写</small></button>
+                <button type="button" role="radio" aria-checked={learningMode === "flip"} className={learningMode === "flip" ? "active" : ""} onClick={() => changeLearningMode("flip")}><strong>翻卡模式</strong><span>德语正面 · 名词同时显示复数</span><small>适合认识和记忆单词</small></button>
+                <button type="button" role="radio" aria-checked={learningMode === "quiz"} className={learningMode === "quiz" ? "active" : ""} onClick={() => changeLearningMode("quiz")}><strong>问答模式</strong><span>中文提示 · 名词需填写复数</span><small>适合主动回忆和拼写</small></button>
               </div>
             </article>
             <article><div><Volume2 /><span><h2>游戏音效</h2><p>门铃、卡牌、金币与升级提示。</p></span></div><Switch checked={save.settings.sound} onCheckedChange={(checked) => setSave((current) => ({ ...current, settings: { ...current.settings, sound: checked } }))} aria-label="游戏音效" /></article>

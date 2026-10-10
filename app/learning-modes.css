@@ -65,6 +65,26 @@
   font-size: .62rem;
 }
 
+.card-plural,
+.card-back-plural {
+  max-width: 100%;
+  color: #355e5a;
+  font-size: .65rem;
+  font-weight: 850;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.card-plural.no-plural {
+  color: #776f60;
+  font-weight: 700;
+}
+
+.card-back-plural {
+  color: #f0d797;
+  font-size: .62rem;
+}
+
 .word-card .card-back > small {
   color: #d8c9a7;
 }
@@ -129,10 +149,28 @@
   letter-spacing: .08em;
 }
 
+.quiz-answer-field {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.quiz-answer-field > span {
+  color: #d9cdaf;
+  font-size: .62rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+}
+
 .quiz-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: end;
+}
+
+.quiz-input-row.has-plural {
+  grid-template-columns: minmax(0, 1fr) minmax(0, .82fr) auto;
 }
 
 .quiz-input-row input {
@@ -274,7 +312,7 @@
 
 @media (max-width: 600px) {
   .learning-quiz {
-    grid-template-rows: minmax(390px, 54svh) minmax(218px, auto) !important;
+    grid-template-rows: minmax(370px, 51svh) minmax(258px, auto) !important;
   }
 
   .learning-flip .word-card {
@@ -291,19 +329,26 @@
     line-height: 1.15;
   }
 
+  .word-card .card-plural,
+  .word-card .card-back-plural {
+    max-width: 100%;
+    font-size: clamp(.41rem, 1.85vw, .53rem);
+    line-height: 1.05;
+  }
+
   .word-card .card-back .card-meaning {
     white-space: normal;
     font-size: clamp(.58rem, 2.8vw, .78rem);
   }
 
   .hand-area.quiz-hand {
-    min-height: 218px;
+    min-height: 258px;
     padding: 7px 6px max(9px, env(safe-area-inset-bottom));
     overflow: visible;
   }
 
   .quiz-panel {
-    min-height: 202px;
+    min-height: 242px;
     grid-template-columns: 88px minmax(0, 1fr);
     gap: 8px;
     padding: 9px;
@@ -320,6 +365,19 @@
 
   .quiz-input-row {
     gap: 5px;
+  }
+
+  .quiz-input-row.has-plural {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quiz-input-row.has-plural .quiz-submit {
+    grid-column: 1 / -1;
+    min-height: 34px;
+  }
+
+  .quiz-answer-field > span {
+    font-size: .54rem;
   }
 
   .quiz-input-row input {

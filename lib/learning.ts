@@ -95,4 +95,13 @@ export function isGermanAnswerCorrect(word: WordEntry, answer: string) {
   return accepted.some((candidate) => normalizeGermanAnswer(candidate) === normalized);
 }
 
+export function hasLearnablePlural(word: WordEntry) {
+  return word.partOfSpeech === "noun" && Boolean(word.plural && word.plural !== "—");
+}
+
+export function isGermanPluralCorrect(word: WordEntry, answer: string) {
+  if (!hasLearnablePlural(word)) return true;
+  return normalizeGermanAnswer(answer) === normalizeGermanAnswer(word.plural ?? "");
+}
+
 
