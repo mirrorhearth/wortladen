@@ -5,6 +5,34 @@ import { VOCABULARY } from "../data/vocabulary.ts";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("C:/Users/user/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright");
+async function instrumentAudio(targetPage: { evaluate: (expression: string) => Promise<unknown> }) {
+  await targetPage.evaluate(`(() => {
+    window.__audioResumeCount = 0;
+    window.__audioStartCount = 0;
+    const originalResume = window.AudioContext.prototype.resume;
+    window.AudioContext.prototype.resume = new Proxy(originalResume, {
+      apply(target, thisArg, args) {
+        window.__audioResumeCount += 1;
+        return Reflect.apply(target, thisArg, args);
+      }
+    });
+    const originalCreateOscillator = window.AudioContext.prototype.createOscillator;
+    window.AudioContext.prototype.createOscillator = new Proxy(originalCreateOscillator, {
+      apply(target, thisArg, args) {
+        const oscillator = Reflect.apply(target, thisArg, args);
+        const originalStart = oscillator.start;
+        oscillator.start = new Proxy(originalStart, {
+          apply(startTarget, startThisArg, startArgs) {
+            window.__audioStartCount += 1;
+            return Reflect.apply(startTarget, startThisArg, startArgs);
+          }
+        });
+        return oscillator;
+      }
+    });
+  })()`);
+}
+
 const browser = await chromium.launch({ headless: true, executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
@@ -14,9 +42,15 @@ page.on("console", (message: { type(): string; text(): string }) => { if (messag
 page.on("pageerror", (error: Error) => errors.push(error.message));
 
 await page.goto("http://127.0.0.1:4173/", { waitUntil: "networkidle" });
+await instrumentAudio(page);
 assert.equal(await page.title(), "Wortladen · 单词小店");
 await page.getByRole("button", { name: /开始营业/ }).click();
 await page.waitForSelector(".phase-waiting");
+const audioActivation = await page.evaluate(() => ({
+  resumes: (window as typeof window & { __audioResumeCount: number }).__audioResumeCount,
+  starts: (window as typeof window & { __audioStartCount: number }).__audioStartCount,
+}));
+assert.ok(audioActivation.starts >= 3, JSON.stringify(audioActivation));
 
 const clue = await page.locator(".order-bubble p").innerText();
 const target = VOCABULARY.find((word) => [...word.descriptions.zh, ...word.descriptions.de].includes(clue));
@@ -89,12 +123,16 @@ await rug.getByRole("button").click();
 assert.ok((await page.locator(".shop-preview").getAttribute("class"))?.includes("decor-rug"));
 await page.waitForTimeout(350);
 await page.reload({ waitUntil: "networkidle" });
+await instrumentAudio(page);
 await page.getByRole("button", { name: "装修" }).click();
 assert.equal(await page.locator(".decor-list article").filter({ hasText: "编织地毯" }).getByRole("button").innerText(), "展示中");
 
 await page.screenshot({ path: "test-results/desktop.png", fullPage: true });
 
 await page.getByRole("button", { name: "设置" }).click();
+const audioStartsBeforePreview = await page.evaluate(() => (window as typeof window & { __audioStartCount: number }).__audioStartCount);
+await page.getByRole("button", { name: "试听" }).click();
+await page.waitForFunction((previous: number) => (window as typeof window & { __audioStartCount: number }).__audioStartCount > previous, audioStartsBeforePreview);
 await page.getByRole("radio", { name: /问答模式/ }).click();
 assert.equal(await page.evaluate(() => localStorage.getItem("wortladen-learning-mode")), "quiz");
 await page.reload({ waitUntil: "networkidle" });

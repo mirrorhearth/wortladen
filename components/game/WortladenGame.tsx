@@ -33,7 +33,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { VOCABULARY, WORD_BY_ID } from "@/data/vocabulary";
-import { playTone, speakGerman } from "@/lib/audio";
+import { playTone, speakGerman, unlockAudio } from "@/lib/audio";
 import type { Customer, DayRecord, LearningMode, SaveData, WordEntry } from "@/lib/game-types";
 import { chooseDescription, hasLearnablePlural, isGermanAnswerCorrect, isGermanPluralCorrect, makeCandidates, normalizeGermanAnswer, scheduleReview, selectLearningWord } from "@/lib/learning";
 import { DEFAULT_SAVE, exportSave, loadLearningMode, loadSave, readSaveFile, saveGame, saveLearningMode } from "@/lib/storage";
@@ -186,6 +186,19 @@ export function WortladenGame() {
     if ("serviceWorker" in navigator) void navigator.serviceWorker.register("./sw.js").catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!ready || !save.settings.sound) return;
+    const resumeAudio = () => { void unlockAudio(); };
+    document.addEventListener("pointerdown", resumeAudio, { capture: true, passive: true });
+    document.addEventListener("touchend", resumeAudio, { capture: true, passive: true });
+    document.addEventListener("keydown", resumeAudio, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", resumeAudio, { capture: true });
+      document.removeEventListener("touchend", resumeAudio, { capture: true });
+      document.removeEventListener("keydown", resumeAudio, { capture: true });
+    };
+  }, [ready, save.settings.sound]);
+
   const resetStudyInteraction = useCallback(() => {
     setFlippedIds(new Set());
     setQuizAnswer("");
@@ -257,6 +270,16 @@ export function WortladenGame() {
     setLearningMode(mode);
     saveLearningMode(mode);
     resetStudyInteraction();
+  };
+
+  const previewSound = () => {
+    if (!save.settings.sound) {
+      setSave((current) => ({ ...current, settings: { ...current.settings, sound: true } }));
+    }
+    void unlockAudio().then((unlocked) => {
+      if (unlocked) playTone("bell", true);
+      else setStorageMessage("浏览器暂时未能播放声音，请关闭手机静音模式后再点一次试听。");
+    });
   };
 
   const toggleCard = (wordId: string) => {
@@ -714,7 +737,7 @@ export function WortladenGame() {
                 <button type="button" role="radio" aria-checked={learningMode === "quiz"} className={learningMode === "quiz" ? "active" : ""} onClick={() => changeLearningMode("quiz")}><strong>问答模式</strong><span>中文提示 · 名词需填写复数</span><small>适合主动回忆和拼写</small></button>
               </div>
             </article>
-            <article><div><Volume2 /><span><h2>游戏音效</h2><p>门铃、卡牌、金币与升级提示。</p></span></div><Switch checked={save.settings.sound} onCheckedChange={(checked) => setSave((current) => ({ ...current, settings: { ...current.settings, sound: checked } }))} aria-label="游戏音效" /></article>
+            <article className="sound-setting"><div><Volume2 /><span><h2>游戏音效</h2><p>门铃、卡牌、金币与升级提示。</p></span></div><div className="sound-setting-actions"><button type="button" onClick={previewSound}>试听</button><Switch checked={save.settings.sound} onCheckedChange={(checked) => { setSave((current) => ({ ...current, settings: { ...current.settings, sound: checked } })); if (checked) previewSound(); }} aria-label="游戏音效" /></div></article>
             <article><div><Sparkles /><span><h2>减少动画</h2><p>保留反馈，但缩短位移和等待。</p></span></div><Switch checked={save.settings.reducedMotion} onCheckedChange={(checked) => setSave((current) => ({ ...current, settings: { ...current.settings, reducedMotion: checked } }))} aria-label="减少动画" /></article>
             <article className="range-setting"><div><BookOpen /><span><h2>每日新词</h2><p>当前 {save.settings.dailyNewWords} 个</p></span></div><input type="range" min="5" max="30" step="5" value={save.settings.dailyNewWords} onChange={(event) => setSave((current) => ({ ...current, settings: { ...current.settings, dailyNewWords: Number(event.target.value) } }))} /></article>
             <article className="range-setting"><div><MessageCircleMore /><span><h2>中文线索比例</h2><p>{Math.round(save.settings.chineseRatio * 100)}% 中文，熟练后会自动降低</p></span></div><input type="range" min="0.2" max="0.9" step="0.1" value={save.settings.chineseRatio} onChange={(event) => setSave((current) => ({ ...current, settings: { ...current.settings, chineseRatio: Number(event.target.value) } }))} /></article>
