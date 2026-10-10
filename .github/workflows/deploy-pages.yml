@@ -28,6 +28,13 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+      - name: Normalize GitHub Pages output
+        shell: bash
+        run: |
+          pages_assets="dist/client/${{ github.event.repository.name }}/_next"
+          test -f dist/client/index.html
+          test -d "$pages_assets"
+          cp -R "$pages_assets" dist/client/_next
       - run: touch dist/client/.nojekyll
       - uses: actions/configure-pages@v5
         with:
