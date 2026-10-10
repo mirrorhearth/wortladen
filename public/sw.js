@@ -27,14 +27,17 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const cacheNames = await caches.keys();
-    await Promise.all(cacheNames.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+    const staleCacheNames = cacheNames.filter((name) => name.startsWith("wortladen-") && name !== CACHE);
+    await Promise.all(staleCacheNames.map((name) => caches.delete(name)));
     await self.clients.claim();
 
     // Do not await these navigations: an activating worker cannot finish a
     // navigation that it is still waiting on. Once activation completes, the
     // newly controlled page reloads from the current GitHub Pages release.
-    const windowClients = await self.clients.matchAll({ type: "window" });
-    windowClients.forEach((client) => { void client.navigate(client.url).catch(() => undefined); });
+    if (staleCacheNames.length > 0) {
+      const windowClients = await self.clients.matchAll({ type: "window" });
+      windowClients.forEach((client) => { void client.navigate(client.url).catch(() => undefined); });
+    }
   })());
 });
 
