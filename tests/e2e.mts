@@ -80,14 +80,21 @@ await mobile.waitForSelector(".phase-waiting");
 const widths = await mobile.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
 assert.equal(widths.scroll, widths.client);
 assert.ok(await mobile.locator(".money-bag-on-counter").isVisible());
-assert.ok((await mobile.locator(".word-card").first().boundingBox())!.width >= 100);
+const cardBoxes = await mobile.locator(".word-card").evaluateAll((cards) => cards.map((card) => {
+  const box = card.getBoundingClientRect();
+  return { left: box.left, right: box.right, width: box.width };
+}));
+assert.equal(cardBoxes.length, 5);
+assert.ok(cardBoxes.every((box) => box.left >= 0 && box.right <= 390));
+assert.ok(cardBoxes.every((box) => box.width >= 60));
 await mobile.screenshot({ path: "test-results/mobile.png", fullPage: true });
 
 assert.deepEqual(errors, []);
 console.log(JSON.stringify({
   desktop: { clue, correct: correctLabel, wrongCardReturned: true, coinsAnimated: 3, balance: 48, nextCustomer: true },
   persistence: { decoration: "rug", survivedReload: true },
-  mobile: { viewport: "390x844", horizontalOverflow: false, bagVisible: true },
+  mobile: { viewport: "390x844", horizontalOverflow: false, fiveCardsVisible: true, bagVisible: true },
 }, null, 2));
 
 await browser.close();
+
