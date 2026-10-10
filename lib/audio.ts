@@ -4,8 +4,36 @@ type SafariAudioWindow = Window & typeof globalThis & {
   webkitAudioContext?: AudioContextConstructor;
 };
 
+type SoundKind = "bell" | "card" | "wrong" | "coin" | "upgrade";
+
+const ASSET_BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 let context: AudioContext | null = null;
 let outputPrimed = false;
+let mediaPlayer: HTMLAudioElement | null = null;
+let unlockPlayer: HTMLAudioElement | null = null;
+let mediaUnlocked = false;
+
+function soundUrl(name: SoundKind | "unlock") {
+  return `${ASSET_BASE}/assets/audio/${name}.wav`;
+}
+
+function createAudioPlayer(source: string) {
+  if (typeof Audio === "undefined") return null;
+  const player = new Audio(source);
+  player.preload = "auto";
+  player.setAttribute("playsinline", "");
+  return player;
+}
+
+function getMediaPlayer() {
+  mediaPlayer ??= createAudioPlayer(soundUrl("bell"));
+  return mediaPlayer;
+}
+
+function getUnlockPlayer() {
+  unlockPlayer ??= createAudioPlayer(soundUrl("unlock"));
+  return unlockPlayer;
+}
 
 function getContext() {
   if (typeof window === "undefined") return null;
@@ -31,7 +59,7 @@ function primeOutput(audio: AudioContext) {
   outputPrimed = true;
 }
 
-export async function unlockAudio() {
+async function unlockSynthAudio() {
   const audio = getContext();
   if (!audio) return false;
   try {
@@ -44,7 +72,28 @@ export async function unlockAudio() {
   }
 }
 
-function scheduleTone(audio: AudioContext, kind: "bell" | "card" | "wrong" | "coin" | "upgrade") {
+async function unlockMediaAudio() {
+  if (mediaUnlocked) return true;
+  const player = getUnlockPlayer();
+  if (!player) return false;
+  try {
+    player.currentTime = 0;
+    await player.play();
+    player.pause();
+    player.currentTime = 0;
+    mediaUnlocked = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function unlockAudio() {
+  const [mediaReady, synthReady] = await Promise.all([unlockMediaAudio(), unlockSynthAudio()]);
+  return mediaReady || synthReady;
+}
+
+function scheduleTone(audio: AudioContext, kind: SoundKind) {
   if (audio.state !== "running") return;
   const now = audio.currentTime + 0.01;
   const notes = {
@@ -68,8 +117,7 @@ function scheduleTone(audio: AudioContext, kind: "bell" | "card" | "wrong" | "co
   });
 }
 
-export function playTone(kind: "bell" | "card" | "wrong" | "coin" | "upgrade", enabled: boolean) {
-  if (!enabled) return;
+function playSynthTone(kind: SoundKind) {
   const audio = getContext();
   if (!audio) return;
   if (audio.state === "running") {
@@ -80,6 +128,24 @@ export function playTone(kind: "bell" | "card" | "wrong" | "coin" | "upgrade", e
     primeOutput(audio);
     scheduleTone(audio, kind);
   }).catch(() => undefined);
+}
+
+export function playTone(kind: SoundKind, enabled: boolean) {
+  if (!enabled) return;
+  const player = getMediaPlayer();
+  if (!player) {
+    playSynthTone(kind);
+    return;
+  }
+  try {
+    player.pause();
+    player.src = soundUrl(kind);
+    player.currentTime = 0;
+    player.volume = 0.9;
+    void player.play().catch(() => playSynthTone(kind));
+  } catch {
+    playSynthTone(kind);
+  }
 }
 
 export function speakGerman(text: string) {

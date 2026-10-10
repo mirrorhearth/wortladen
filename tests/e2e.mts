@@ -9,6 +9,16 @@ async function instrumentAudio(targetPage: { evaluate: (expression: string) => P
   await targetPage.evaluate(`(() => {
     window.__audioResumeCount = 0;
     window.__audioStartCount = 0;
+    window.__mediaPlayCount = 0;
+    window.__lastMediaSource = "";
+    const originalMediaPlay = window.HTMLMediaElement.prototype.play;
+    window.HTMLMediaElement.prototype.play = new Proxy(originalMediaPlay, {
+      apply(target, thisArg, args) {
+        window.__mediaPlayCount += 1;
+        window.__lastMediaSource = thisArg.src;
+        return Reflect.apply(target, thisArg, args);
+      }
+    });
     const originalResume = window.AudioContext.prototype.resume;
     window.AudioContext.prototype.resume = new Proxy(originalResume, {
       apply(target, thisArg, args) {
@@ -49,8 +59,11 @@ await page.waitForSelector(".phase-waiting");
 const audioActivation = await page.evaluate(() => ({
   resumes: (window as typeof window & { __audioResumeCount: number }).__audioResumeCount,
   starts: (window as typeof window & { __audioStartCount: number }).__audioStartCount,
+  mediaPlays: (window as typeof window & { __mediaPlayCount: number }).__mediaPlayCount,
+  mediaSource: (window as typeof window & { __lastMediaSource: string }).__lastMediaSource,
 }));
-assert.ok(audioActivation.starts >= 3, JSON.stringify(audioActivation));
+assert.ok(audioActivation.mediaPlays >= 2, JSON.stringify(audioActivation));
+assert.match(audioActivation.mediaSource, /\/assets\/audio\/bell\.wav$/);
 
 const clue = await page.locator(".order-bubble p").innerText();
 const target = VOCABULARY.find((word) => [...word.descriptions.zh, ...word.descriptions.de].includes(clue));
@@ -130,9 +143,10 @@ assert.equal(await page.locator(".decor-list article").filter({ hasText: "编织
 await page.screenshot({ path: "test-results/desktop.png", fullPage: true });
 
 await page.getByRole("button", { name: "设置" }).click();
-const audioStartsBeforePreview = await page.evaluate(() => (window as typeof window & { __audioStartCount: number }).__audioStartCount);
+const mediaPlaysBeforePreview = await page.evaluate(() => (window as typeof window & { __mediaPlayCount: number }).__mediaPlayCount);
 await page.getByRole("button", { name: "试听" }).click();
-await page.waitForFunction((previous: number) => (window as typeof window & { __audioStartCount: number }).__audioStartCount > previous, audioStartsBeforePreview);
+await page.waitForFunction((previous: number) => (window as typeof window & { __mediaPlayCount: number }).__mediaPlayCount > previous, mediaPlaysBeforePreview);
+assert.match(await page.evaluate(() => (window as typeof window & { __lastMediaSource: string }).__lastMediaSource), /\/assets\/audio\/bell\.wav$/);
 await page.getByRole("radio", { name: /问答模式/ }).click();
 assert.equal(await page.evaluate(() => localStorage.getItem("wortladen-learning-mode")), "quiz");
 await page.reload({ waitUntil: "networkidle" });

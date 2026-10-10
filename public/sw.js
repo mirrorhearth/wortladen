@@ -1,10 +1,16 @@
-const CACHE = "wortladen-v2";
+const CACHE = "wortladen-v3";
 const APP_SHELL = [
   "./",
   "./manifest.webmanifest",
   "./favicon.svg",
   "./assets/shop-interior.png",
   "./assets/customer-sprites.png",
+  "./assets/audio/unlock.wav",
+  "./assets/audio/bell.wav",
+  "./assets/audio/card.wav",
+  "./assets/audio/wrong.wav",
+  "./assets/audio/coin.wav",
+  "./assets/audio/upgrade.wav",
 ];
 
 self.addEventListener("install", (event) => {
