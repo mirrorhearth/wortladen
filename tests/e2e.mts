@@ -112,9 +112,15 @@ const quizCorrectAnswer = revealedMatch[1];
 assert.equal(await deliverButton.isDisabled(), true);
 
 const quizInput = page.getByLabel("德语答案");
+const balanceBeforeWrongAnswer = Number(await page.locator(".coin-purse strong").innerText());
+const progressBeforeWrongAnswer = (await page.locator(".day-progress strong").innerText()).trim();
 await quizInput.fill("definitelywrong");
 await page.getByRole("button", { name: "提交答案" }).click();
 assert.match(await page.locator(".quiz-feedback").innerText(), /还不对/);
+assert.equal(await deliverButton.isDisabled(), true);
+await page.waitForTimeout(1800);
+assert.equal(Number(await page.locator(".coin-purse strong").innerText()), balanceBeforeWrongAnswer);
+assert.equal((await page.locator(".day-progress strong").innerText()).trim(), progressBeforeWrongAnswer);
 await page.getByRole("button", { name: "提交答案" }).click();
 assert.match(await page.locator(".quiz-feedback").innerText(), /已经试过/);
 await quizInput.fill(`  ${quizCorrectAnswer.toLocaleUpperCase("de-DE")}  `);

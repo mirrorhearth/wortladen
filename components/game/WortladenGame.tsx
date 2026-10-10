@@ -157,7 +157,8 @@ export function WortladenGame() {
   const pointerStart = useRef<{ id: string; x: number; y: number } | null>(null);
   const suppressFlip = useRef<{ id: string; until: number } | null>(null);
   const attemptedAnswers = useRef<Set<string>>(new Set());
-  const quizAccepted = useRef(false);
+  const orderSerial = useRef(0);
+  const quizAcceptedOrder = useRef<number | null>(null);
   const deliveryLock = useRef(false);
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -188,12 +189,13 @@ export function WortladenGame() {
     setQuizStatus("idle");
     setQuizMessage("");
     attemptedAnswers.current.clear();
-    quizAccepted.current = false;
+    quizAcceptedOrder.current = null;
     pointerStart.current = null;
     suppressFlip.current = null;
   }, []);
 
   const prepareOrder = useCallback((data: SaveData, nextCustomer: number) => {
+    orderSerial.current += 1;
     const nextTarget = selectLearningWord([...VOCABULARY, ...data.customWords], data);
     const mastery = data.learning[nextTarget.id]?.mastery ?? 0;
     setTarget(nextTarget);
@@ -268,7 +270,8 @@ export function WortladenGame() {
 
   const submitQuizAnswer = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (phase !== "waiting" || learningMode !== "quiz" || quizAccepted.current) return;
+    if (phase !== "waiting" || learningMode !== "quiz" || quizStatus === "correct") return;
+    quizAcceptedOrder.current = null;
     const normalized = normalizeGermanAnswer(quizAnswer);
     if (!normalized) {
       setQuizStatus("wrong");
@@ -276,7 +279,7 @@ export function WortladenGame() {
       return;
     }
     if (isGermanAnswerCorrect(target, quizAnswer)) {
-      quizAccepted.current = true;
+      quizAcceptedOrder.current = orderSerial.current;
       setQuizStatus("correct");
       setQuizMessage("回答正确！现在可以把订单交给顾客。");
       playTone("card", save.settings.sound);
@@ -302,7 +305,8 @@ export function WortladenGame() {
   };
 
   const revealQuizAnswer = () => {
-    if (phase !== "waiting" || quizAccepted.current) return;
+    if (phase !== "waiting" || quizStatus === "correct") return;
+    quizAcceptedOrder.current = null;
     setQuizStatus("revealed");
     setQuizMessage(`正确答案：${wordLabel(target)}。查看答案不会自动完成订单。`);
   };
@@ -327,7 +331,10 @@ export function WortladenGame() {
 
   const playCard = (word: WordEntry) => {
     if (phase !== "waiting" || deliveryLock.current) return;
-    if (learningMode === "quiz" && (!quizAccepted.current || word.id !== target.id)) return;
+    if (
+      learningMode === "quiz" &&
+      (quizStatus !== "correct" || quizAcceptedOrder.current !== orderSerial.current || word.id !== target.id)
+    ) return;
     deliveryLock.current = true;
     setPlayedId(word.id);
     playTone("card", save.settings.sound);

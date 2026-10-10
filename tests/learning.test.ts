@@ -62,4 +62,15 @@ test("quiz accepts the target word and an explicit noun article without changing
   assert.equal(isGermanAnswerCorrect(book, "das Buch"), true);
   assert.equal(isGermanAnswerCorrect(book, "der Buch"), false);
 });
-
+test("quiz never accepts a different vocabulary entry as the current answer", () => {
+  for (const target of VOCABULARY) {
+    for (const other of VOCABULARY) {
+      if (other.id === target.id) continue;
+      assert.equal(
+        isGermanAnswerCorrect(target, other.word),
+        false,
+        `${other.word} must not be accepted for ${target.word}`,
+      );
+    }
+  }
+});
